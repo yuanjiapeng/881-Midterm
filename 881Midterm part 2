@@ -1,0 +1,122 @@
+# 881 Midterm part 2
+library(stringr)
+library(ggplot2)
+thefile<-dir("~/Downloads/raw data/",pattern="\\.txt")
+thefile
+for (a in thefile){
+  nameToUse<-str_sub(string=a,start=1,end=7)
+  temp<-read.csv(file=file.path("~/Downloads/raw data/",a), skip=2, stringsAsFactors=F)
+  assign(x=nameToUse,value=temp)
+}
+L1<- rbind( get('L-00-01') , get('L-00-02') , get("L-00-03") , get("L-00-04") , get("L-00-05") , get("L-00-06") , get("L-00-07"), get("L-00-08"),
+   get("L-00-09") , get("L-00-10") , get("L-00-11") , get("L-00-12") , get("L-01-01") , get("L-01-02") , get("L-01-03") , get("L-01-04") ,
+   get("L-01-05") , get("L-01-06") , get("L-01-07"), get("L-01-08") , get("L-01-09") , get("L-01-10") , get("L-01-11") , get("L-01-12") ,
+   get("L-02-01") , get("L-02-02") , get("L-02-03") , get("L-02-04") , get("L-02-05") , get("L-02-06") , get("L-02-07"), get("L-02-08") ,
+   get("L-02-09") , get("L-02-10") , get("L-02-11") , get("L-02-12") , get("L-03-01") , get("L-03-02") , get("L-03-03") , get("L-03-04") ,
+   get("L-03-05") , get("L-03-06") , get("L-03-07") , get("L-03-08") , get("L-03-09") , get("L-03-10") , get("L-03-11"), get("L-03-12") ,
+   get("L-04-01") , get("L-04-02") , get("L-04-03") , get("L-04-04") , get("L-04-05"), get("L-04-06") , get("L-04-07") , get("L-04-08"),
+   get("L-04-09"), get("L-04-10") , get("L-04-11") , get("L-04-12"))
+# we need to use get()
+
+#we clean data
+L1[L1=="T   "]<-0
+L1[L1=="T"]<-0
+#L1[is.na(L1)]<-0
+L1[L1=="M   "]<--1
+L1[L1=="----"]<--1
+L1<- L1[,(2:25)]
+
+
+# in order to count storm, first we make data.frame L1 be a list
+L2<-as.matrix(L1)  
+L2<-t(L2)
+L2<-as.list(L2)
+L2[35]
+class(L2)
+L2<-as.numeric(L2)
+#if x>0, storm=x+storm
+#we have to add hourly rain to get a storm, then the storm(total amount rain) is gamm distribution
+
+rain<-NULL
+storm<-0
+k=1
+while(k<length(L2)){
+  if(L2[k]>=0){
+    while(L2[k]>=0){
+      storm=storm+L2[k]
+      k=k+1
+    }
+    rain<-c(rain,storm)
+  }
+  else {
+    k=k+1
+    storm=0
+  }
+}
+rain
+length(L2)
+length(rain)
+
+# Now, because we set "T" to be 0, so it might cause some consecutive 0 to be count, so we need to delete 0 in "rain" set
+rain1<-rain[rain!=0]
+rain1
+length(rain1)
+rain1<-as.data.frame(rain1)
+colnames(rain1)<-"x"
+ggplot(rain1,aes(x=x))+geom_density()
+
+#Now, we use of method of moment estimations as entry points for maximum likelihood estimation
+# when calculation of MLE's cannot be performed analytically
+#Now using the MGF for gamme or be simply looking it up
+##  use the following facts abo1ut the gamma function 
+##  firt moment = m1 = (alpha/lambda)
+
+##  second moment = m2 = m1^2 + (m1/lambda)
+
+##  lambda = m1 / (m2 - m1^2)     note that (m2 - m1^2) = variance(x)
+
+##  alpha = (m1^2)/(m2 - mx^2)
+
+## lambda-hat = X-bar/S-squre
+
+## alpha-hat =  (X-bar)^2 / S-square
+mean(rain1$x)
+var(rain1$x)
+alpha<-mean(rain1$x)^2/var(rain1$x)# 0.361
+lambda<-mean(rain1$x)/var(rain1$x)#1.276
+
+#Now, do a bootstrap for alpha and lambda
+B<-1000
+tboot <- rep(0,B)
+for(i in 1:B){
+  d1<-sample(rain1$x,227,replace=TRUE)
+  tboot[i]<-mean(d1)^2/var(d1)#for alpha
+  
+}
+se<-sqrt(var(tboot))
+se
+ma<-mean(tboot)
+ma
+Normal<-c(ma-2*se,ma+2*se)
+Normal
+
+#for lambda
+C<-1000
+tboot1 <- rep(0,C)
+for(i in 1:C){
+  d2<-sample(rain1$x,227,replace=TRUE)
+  tboot1[i]<-mean(d2)/var(d2)#for lambda
+  
+}
+se1<-sqrt(var(tboot1))
+se1
+ml<-mean(tboot1)
+ml
+Normal1<-c(ml-2*se1,ml+2*se1)
+Normal1
+
+# now get MLE by using alpha=0.361 and lambda=1.276
+n<-length(rain1$x)
+minus.likelihood <- function(theta) {-(n*theta[1]*log(theta[2])-n*log(factorial(theta[1]-1))+(theta[1]-1)*sum(log(rain1$x))-theta[2]*sum(rain1$x))}
+max.likelihood <- nlminb(start=c(.3613, 1.2762), obj = minus.likelihood)
+max.likelihood$par# 0.5462 and 1.9291
